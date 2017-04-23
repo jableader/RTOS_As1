@@ -6,21 +6,34 @@
 #include <semaphore.h>
 #include <stdbool.h>
 
-#define LINE_BUFF_SIZE 200
+#define LINE_BUFF_SIZE 512
+
+void log(char * thread, char * message) {
+	printf("%s: %s\n", thread, message);
+}
 
 /* For a more complicated task I would include the relevant semaphores in the
  * relevant thread args struct, but for this trivial case a global will suffice
  */
 sem_t readDone, passDone, writeDone, finished;
 char sharedLineBuffer[LINE_BUFF_SIZE];
+volatile bool threadBHasNoMoreData = false;
+
+typedef union {
+	int fd[2];
+	struct {
+		int read;
+		int write;
+	} s;
+} PipeDescriptor;
 
 typedef struct {
-	int fd[2];
-	FILE *file;
+	FILE * file;
+	PipeDescriptor pipe;
 } ThreadArgsA;
 
 typedef struct {
-	int fd[2];
+	PipeDescriptor pipe;
 } ThreadArgsB;
 
 typedef struct {
@@ -28,68 +41,88 @@ typedef struct {
 } ThreadArgsC;
 
 void readingThreadMethod(ThreadArgsA * args) {
-	close(args->fd[0]);
+	log("A", "Begins");
 
 	char lineBuff[LINE_BUFF_SIZE];
 
 	bool isEof = false;
 	do {
+		log("A", "Wait");
 		sem_wait(&writeDone);
+		log("A", "Signalled");
 
 		if (fgets(lineBuff, LINE_BUFF_SIZE, args->file) != NULL) {
-			write(args->fd[1], lineBuff, strlen(lineBuff));
+			int nbytes = strlen(lineBuff) + 1;
+			printf("A: Writing %d bytes to pipe\n", nbytes);
+
+			write(args->pipe.s.write, lineBuff, nbytes);
 		} else {
 			isEof = true;
 		}
 
+		log("A", "Signalling");
 		sem_post(&readDone);
 	} while (!isEof);
 
-	close(args->fd[1]);
+	close(args->pipe.s.write);
 	return;
 }
 
 void passingThreadMethod(ThreadArgsB * args) {
-	close(args->fd[1]);
+	log("B", "Begins");
 
 	bool isEof = false;
 	do {
+		log("B", "Wait");
 		sem_wait(&readDone);
+		log("B", "Signalled");
 
-		if (read(args->fd[0], sharedLineBuffer, LINE_BUFF_SIZE) == 0) {
-			sharedLineBuffer[0] = '\0'; // Empty string for EOF
-			isEof = true;
-		}
+		if (read(args->pipe.s.read, sharedLineBuffer, LINE_BUFF_SIZE) <= 0)
+			threadBHasNoMoreData = isEof = true;
 
+		printf("B: Read %d bytes from pipe\n", strlen(sharedLineBuffer));
+
+		log("B", "Signalling");
 		sem_post(&passDone);
 	} while (!isEof);
 }
 
 void writingThreadMethod(ThreadArgsC * args) {
+	log("C", "Begins");
 	bool isEof = false;
-	bool isInHeader = false;
+	bool hasPassedHeader = false;
 
 	do {
+		log("C", "Wait");
 		sem_wait(&passDone);
+		log("C", "Signalled");
 
-		isEof = sharedLineBuffer[0] == '\0';
-		if (isInHeader) {
-			isInHeader = strcmp("end_header\n", sharedLineBuffer) == 0;
+		if (!threadBHasNoMoreData) {
+			if (hasPassedHeader) {
+				fputs(sharedLineBuffer, args->file);
+			}	else {
+				hasPassedHeader = strncmp("end_header", sharedLineBuffer, 10) == 0;
+
+				if (hasPassedHeader)
+					log("C", "Header found");
+				else
+					printf("Ignoring %s", sharedLineBuffer);
+			}
 		}
 
-		if (!isEof && !isInHeader) {
-			fputs(sharedLineBuffer, args->file);
-		}
-
+		log("C", "Signalling");
 		sem_post(&writeDone);
-	} while (!isEof);
+	} while (!threadBHasNoMoreData);
 
+	log("C", "EOF found");
 	sem_post(&finished);
 }
 
 int main(void) {
-	int pipeErr, fd[2];
-	if ((pipeErr = pipe(fd)) < 0) {
+	PipeDescriptor fd;
+
+	int pipeErr;
+	if ((pipeErr = pipe(fd.fd)) < 0) {
 		fprintf(stderr, "Error opening pipe: %d", pipeErr);
 		return -1;
 	}
@@ -123,7 +156,7 @@ int main(void) {
 
 	pthread_t threadA, threadB, threadC;
 
-	ThreadArgsA argsA = { fd, input };
+	ThreadArgsA argsA = { input, fd };
 	bool threadsCreated = pthread_create(&threadA, NULL, (void *)readingThreadMethod, (void *)(&argsA)) == 0;
 
 	ThreadArgsB argsB = { fd };
@@ -136,15 +169,17 @@ int main(void) {
 		fputs("There was a problem when constructing the threads", stderr);
 		fclose(input);
 		fclose(output);
+
 		return -5;
 	}
 
+	log("main", "Signalling");
 	sem_post(&writeDone);
 	sem_wait(&finished);
 	fclose(input);
 	fclose(output);
 
-	fputs("Done!", stdout);
+	log("main", "Done!");
 
 	return 0;
 }
