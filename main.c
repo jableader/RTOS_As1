@@ -8,13 +8,9 @@
 
 #define LINE_BUFF_SIZE 512
 
-void log(char * thread, char * message) {
-	printf("%s: %s\n", thread, message);
-}
-
-/* For a more complicated task I would include the relevant semaphores in the
- * relevant thread args struct, but for this trivial case a global will suffice
- */
+/* For a more complicated task I would include the relevant data in the
+* relevant thread args struct, but for this trivial case a global will suffice
+*/
 sem_t readDone, passDone, writeDone, finished;
 char sharedLineBuffer[LINE_BUFF_SIZE];
 volatile bool threadBHasNoMoreData = false;
@@ -40,18 +36,26 @@ typedef struct {
 	FILE * file;
 } ThreadArgsC;
 
+void trimAfterNewline(char* s) {
+	while (*s != '\n' && *s != '\r' && *s != '\0')
+		s++;
+	*s = '\0';
+}
+
 void readingThreadMethod(ThreadArgsA * args) {
-	log("A", "Begins");
+	printf("A: Begins\n");
 
 	char lineBuff[LINE_BUFF_SIZE];
 
 	bool isEof = false;
 	do {
-		log("A", "Wait");
+		printf("A: Wait\n");
 		sem_wait(&writeDone);
-		log("A", "Signalled");
+		printf("A: Signalled\n");
 
 		if (fgets(lineBuff, LINE_BUFF_SIZE, args->file) != NULL) {
+			trimAfterNewline(lineBuff);
+
 			int nbytes = strlen(lineBuff) + 1;
 			printf("A: Writing %d bytes to pipe\n", nbytes);
 
@@ -60,7 +64,7 @@ void readingThreadMethod(ThreadArgsA * args) {
 			isEof = true;
 		}
 
-		log("A", "Signalling");
+		printf("A: Signalling\n");
 		sem_post(&readDone);
 	} while (!isEof);
 
@@ -69,52 +73,56 @@ void readingThreadMethod(ThreadArgsA * args) {
 }
 
 void passingThreadMethod(ThreadArgsB * args) {
-	log("B", "Begins");
+	printf("B: Begins\n");
 
 	bool isEof = false;
 	do {
-		log("B", "Wait");
+		printf("B: Wait\n");
 		sem_wait(&readDone);
-		log("B", "Signalled");
+		printf("B: Signalled\n");
 
-		if (read(args->pipe.s.read, sharedLineBuffer, LINE_BUFF_SIZE) <= 0)
+		if (read(args->pipe.s.read, sharedLineBuffer, LINE_BUFF_SIZE) <= 0) {
 			threadBHasNoMoreData = isEof = true;
+		}
 
-		printf("B: Read %d bytes from pipe\n", strlen(sharedLineBuffer));
+		printf("B: Read %d bytes from pipe\n", (int)strlen(sharedLineBuffer));
 
-		log("B", "Signalling");
+		printf("B: Signalling\n");
 		sem_post(&passDone);
 	} while (!isEof);
 }
 
 void writingThreadMethod(ThreadArgsC * args) {
-	log("C", "Begins");
+	printf("C: Begins\n");
 	bool isEof = false;
 	bool hasPassedHeader = false;
 
 	do {
-		log("C", "Wait");
+		printf("C: Wait\n");
 		sem_wait(&passDone);
-		log("C", "Signalled");
+		printf("C: Signalled\n");
 
 		if (!threadBHasNoMoreData) {
 			if (hasPassedHeader) {
+				printf("C: Passing \"%s\"\n", sharedLineBuffer);
 				fputs(sharedLineBuffer, args->file);
-			}	else {
+				fputc('\n', args->file);
+			} else {
 				hasPassedHeader = strncmp("end_header", sharedLineBuffer, 10) == 0;
 
-				if (hasPassedHeader)
-					log("C", "Header found");
-				else
-					printf("Ignoring %s", sharedLineBuffer);
+				if (hasPassedHeader) {
+					printf("C: Header found\n");
+				} else{
+					printf("C: Ignoring \"%s\"\n", sharedLineBuffer);
+				}
 			}
 		}
 
-		log("C", "Signalling");
+		printf("C: Signalling\n");
 		sem_post(&writeDone);
 	} while (!threadBHasNoMoreData);
 
-	log("C", "EOF found");
+	printf("C: EOF found\n");
 	sem_post(&finished);
 }
 
@@ -123,33 +131,33 @@ int main(void) {
 
 	int pipeErr;
 	if ((pipeErr = pipe(fd.fd)) < 0) {
-		fprintf(stderr, "Error opening pipe: %d", pipeErr);
+		perror("Error opening pipe: %d");
 		return -1;
 	}
 
 	/* Init all our semaphores to zero, they should all block and we can begin by
-	 * signalling A through writeDone
-	 */
+	* signalling A through writeDone
+	*/
 	bool semaphoresWereInitialised =
-				sem_init(&readDone, true, 0) != -1 ||
-				sem_init(&passDone, true, 0) != -1 ||
-				sem_init(&writeDone, true, 0) != -1 ||
-				sem_init(&finished, true, 0)  != -1;
+			sem_init(&readDone, true, 0) != -1 ||
+			sem_init(&passDone, true, 0) != -1 ||
+			sem_init(&writeDone, true, 0) != -1 ||
+			sem_init(&finished, true, 0)  != -1;
 
 	if (!semaphoresWereInitialised) {
-		fputs("Error creating a semaphore\n", stderr);
+		perror("Error creating a semaphore");
 		return -2;
 	}
 
 	FILE *input = fopen("data.txt", "r");
 	if (input == NULL) {
-		fputs("Error opening input file\n", stderr);
+		perror("Error opening input file");
 		return -3;
 	}
 
 	FILE *output = fopen("src.txt", "w");
 	if (output == NULL) {
-		fputs("Error opening output file\n", stderr);
+		perror("Error opening output file");
 		fclose(input);
 		return -4;
 	}
@@ -166,20 +174,34 @@ int main(void) {
 	threadsCreated &= pthread_create(&threadC, NULL, (void *)writingThreadMethod, (void *)(&argsC)) == 0;
 
 	if (!threadsCreated) {
-		fputs("There was a problem when constructing the threads", stderr);
+		perror("There was a problem when constructing the threads");
 		fclose(input);
 		fclose(output);
 
 		return -5;
 	}
 
-	log("main", "Signalling");
+	printf("main: Signalling\n");
 	sem_post(&writeDone);
 	sem_wait(&finished);
+
 	fclose(input);
 	fclose(output);
 
-	log("main", "Done!");
+	/* Use a single pipe char, we would like to attempt to destroy subsequent
+	* semaphores, regardless of whether the previous ones succeeded
+	*/
+	bool semaphoresWereDestroyed =
+			sem_destroy(&readDone) != -1 |
+			sem_destroy(&passDone) != -1 |
+			sem_destroy(&writeDone) != -1 |
+			sem_destroy(&finished) != -1;
+
+	if (!semaphoresWereDestroyed) {
+		printf("main: Some or all semaphores were not destroyed (warning)\n");
+	}
+
+	printf("main: Done!\n");
 
 	return 0;
 }
