@@ -104,7 +104,7 @@ void writingThreadMethod(ThreadArgsC * args) {
 
 		if (!threadBHasNoMoreData) {
 			if (hasPassedHeader) {
-				printf("C: Passing \"%s\"\n", sharedLineBuffer);
+				printf("C: Writing \"%s\"\n", sharedLineBuffer);
 				fputs(sharedLineBuffer, args->file);
 				fputc('\n', args->file);
 			} else {

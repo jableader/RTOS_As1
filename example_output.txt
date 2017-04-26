@@ -1,0 +1,256 @@
+A: Begins
+A: Wait
+main: Signalling
+A: Signalled
+A: Writing 4 bytes to pipe
+A: Signalling
+A: Wait
+B: Begins
+B: Wait
+B: Signalled
+B: Read 3 bytes from pipe
+B: Signalling
+B: Wait
+C: Begins
+C: Wait
+C: Signalled
+C: Ignoring "ply"
+C: Signalling
+C: Wait
+A: Signalled
+A: Writing 17 bytes to pipe
+A: Signalling
+A: Wait
+B: Signalled
+B: Read 16 bytes from pipe
+B: Signalling
+B: Wait
+C: Signalled
+C: Ignoring "format ascii 1.0"
+C: Signalling
+C: Wait
+A: Signalled
+A: Writing 25 bytes to pipe
+A: Signalling
+A: Wait
+B: Signalled
+B: Read 24 bytes from pipe
+B: Signalling
+B: Wait
+C: Signalled
+C: Ignoring "comment VCGLIB generated"
+C: Signalling
+C: Wait
+A: Signalled
+A: Writing 22 bytes to pipe
+A: Signalling
+A: Wait
+B: Signalled
+B: Read 21 bytes from pipe
+B: Signalling
+B: Wait
+C: Signalled
+C: Ignoring "element vertex 437334"
+C: Signalling
+C: Wait
+A: Signalled
+A: Writing 17 bytes to pipe
+A: Signalling
+A: Wait
+B: Signalled
+B: Read 16 bytes from pipe
+B: Signalling
+B: Wait
+C: Signalled
+C: Ignoring "property float x"
+C: Signalling
+C: Wait
+A: Signalled
+A: Writing 17 bytes to pipe
+A: Signalling
+A: Wait
+B: Signalled
+B: Read 16 bytes from pipe
+B: Signalling
+B: Wait
+C: Signalled
+C: Ignoring "property float y"
+C: Signalling
+C: Wait
+A: Signalled
+A: Writing 17 bytes to pipe
+A: Signalling
+A: Wait
+B: Signalled
+B: Read 16 bytes from pipe
+B: Signalling
+B: Wait
+C: Signalled
+C: Ignoring "property float z"
+C: Signalling
+C: Wait
+A: Signalled
+A: Writing 15 bytes to pipe
+A: Signalling
+A: Wait
+B: Signalled
+B: Read 14 bytes from pipe
+B: Signalling
+B: Wait
+C: Signalled
+C: Ignoring "element face 0"
+C: Signalling
+C: Wait
+A: Signalled
+A: Writing 39 bytes to pipe
+A: Signalling
+A: Wait
+B: Signalled
+B: Read 38 bytes from pipe
+B: Signalling
+B: Wait
+C: Signalled
+C: Ignoring "property list uchar int vertex_indices"
+C: Signalling
+C: Wait
+A: Signalled
+A: Writing 11 bytes to pipe
+A: Signalling
+A: Wait
+B: Signalled
+B: Read 10 bytes from pipe
+B: Signalling
+B: Wait
+C: Signalled
+C: Header found
+C: Signalling
+C: Wait
+A: Signalled
+A: Writing 26 bytes to pipe
+A: Signalling
+A: Wait
+B: Signalled
+B: Read 25 bytes from pipe
+B: Signalling
+B: Wait
+C: Signalled
+C: Writing "-0.962323 1.07845 16.0996"
+C: Signalling
+C: Wait
+A: Signalled
+A: Writing 25 bytes to pipe
+A: Signalling
+A: Wait
+B: Signalled
+B: Read 24 bytes from pipe
+B: Signalling
+B: Wait
+C: Signalled
+C: Writing "-0.411401 1.14165 15.803"
+C: Signalling
+C: Wait
+A: Signalled
+A: Writing 26 bytes to pipe
+A: Signalling
+A: Wait
+B: Signalled
+B: Read 25 bytes from pipe
+B: Signalling
+B: Wait
+C: Signalled
+C: Writing "-0.947731 1.09894 16.1129"
+C: Signalling
+C: Wait
+A: Signalled
+A: Writing 26 bytes to pipe
+A: Signalling
+A: Wait
+B: Signalled
+B: Read 25 bytes from pipe
+B: Signalling
+B: Wait
+C: Signalled
+C: Writing "-0.912823 1.11493 15.7939"
+C: Signalling
+C: Wait
+A: Signalled
+A: Writing 25 bytes to pipe
+A: Signalling
+A: Wait
+B: Signalled
+B: Read 24 bytes from pipe
+B: Signalling
+B: Wait
+C: Signalled
+C: Writing "-0.89709 1.10348 15.8929"
+C: Signalling
+C: Wait
+A: Signalled
+A: Writing 26 bytes to pipe
+A: Signalling
+A: Wait
+B: Signalled
+B: Read 25 bytes from pipe
+B: Signalling
+B: Wait
+C: Signalled
+C: Writing "-0.872491 1.11886 15.9091"
+C: Signalling
+C: Wait
+A: Signalled
+A: Writing 26 bytes to pipe
+A: Signalling
+A: Wait
+B: Signalled
+B: Read 25 bytes from pipe
+B: Signalling
+B: Wait
+C: Signalled
+C: Writing "-0.678974 1.12755 15.9045"
+C: Signalling
+C: Wait
+A: Signalled
+A: Writing 25 bytes to pipe
+A: Signalling
+A: Wait
+B: Signalled
+B: Read 24 bytes from pipe
+B: Signalling
+B: Wait
+C: Signalled
+C: Writing "-0.652102 1.1302 15.8529"
+C: Signalling
+C: Wait
+A: Signalled
+A: Writing 26 bytes to pipe
+A: Signalling
+A: Wait
+B: Signalled
+B: Read 25 bytes from pipe
+B: Signalling
+B: Wait
+C: Signalled
+C: Writing "-0.424212 1.15712 15.7697"
+C: Signalling
+C: Wait
+A: Signalled
+A: Writing 25 bytes to pipe
+A: Signalling
+A: Wait
+B: Signalled
+B: Read 24 bytes from pipe
+B: Signalling
+B: Wait
+C: Signalled
+C: Writing "-0.388758 1.15708 15.789"
+C: Signalling
+C: Wait
+A: Signalled
+A: Signalling
+B: Signalled
+B: Read 24 bytes from pipe
+B: Signalling
+C: Signalled
+C: Signalling
+C: EOF found
+main: Done!
