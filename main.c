@@ -6,11 +6,16 @@
 #include <semaphore.h>
 #include <stdbool.h>
 
+/* We were not given any instruction on how large a line could be, however from
+ * inspecting the sample file I can see that the only lines we don't want cut
+ * are within 10 and 25 characters long. I think that a buffer twenty times
+ * that size should suffice.
+ */
 #define LINE_BUFF_SIZE 512
 
 /* For a more complicated task I would include the relevant data in the
-* relevant thread args struct, but for this trivial case a global will suffice
-*/
+ * thread args structs, but for this trivial case a global will suffice
+ */
 sem_t readDone, passDone, writeDone, finished;
 char sharedLineBuffer[LINE_BUFF_SIZE];
 volatile bool threadBHasNoMoreData = false;
@@ -24,6 +29,44 @@ typedef union {
 } PipeDescriptor;
 
 typedef struct {
+	pthread_t thread;
+	char id;
+	sem_t* start;
+	sem_t* end;
+	bool(*threadMethod)(void *);
+	void* otherArgs;
+} thread_descriptor;
+
+void threadRunner(thread_descriptor * td) {
+	printf("%c: Beginning.\n", td->id);
+
+	bool shouldContinue;
+	do {
+		printf("%c: Waiting for signal.\n", td->id);
+		sem_wait(td->start);
+		printf("%c: Recieved signal, running method.\n", td->id);
+
+		shouldContinue = td->threadMethod(td->otherArgs);
+
+		printf("%c: Signalling next thread.\n", td->id);
+		sem_wait(td->start);
+	} while (shouldContinue);
+
+	printf("%c: Exit condition reached, ending now.\n", td->id);
+}
+
+bool createThread(thread_descriptor * thread, char id, sem_t* start, sem_t* end, bool(*threadMethod)(void *), void * otherArgs) {
+	thread->id = id;
+	thread->start = start;
+	thread->end = end;
+	thread->threadMethod = threadMethod;
+	thread->otherArgs = otherArgs;
+
+	return pthread_create(&(thread->thread), NULL, (void *)threadRunner, (void *)thread) == 0;
+}
+
+typedef struct {
+	char c;
 	FILE * file;
 	PipeDescriptor pipe;
 } ThreadArgsA;
@@ -42,166 +85,146 @@ void trimAfterNewline(char* s) {
 	*s = '\0';
 }
 
-void readingThreadMethod(ThreadArgsA * args) {
-	printf("A: Begins\n");
+bool readingThreadMethod(ThreadArgsA* args) {
+	static char lineBuff[LINE_BUFF_SIZE];
 
-	char lineBuff[LINE_BUFF_SIZE];
+	if (fgets(lineBuff, LINE_BUFF_SIZE, args->file) != NULL) {
+		trimAfterNewline(lineBuff);
 
-	bool isEof = false;
-	do {
-		printf("A: Wait\n");
-		sem_wait(&writeDone);
-		printf("A: Signalled\n");
+		int nbytes = strlen(lineBuff) + 1;
+		printf("A: Writing %d bytes to pipe\n", nbytes);
 
-		if (fgets(lineBuff, LINE_BUFF_SIZE, args->file) != NULL) {
-			trimAfterNewline(lineBuff);
+		write(args->pipe.s.write, lineBuff, nbytes);
 
-			int nbytes = strlen(lineBuff) + 1;
-			printf("A: Writing %d bytes to pipe\n", nbytes);
+		return true;
+	} else {
+		close(args->pipe.s.write);
 
-			write(args->pipe.s.write, lineBuff, nbytes);
+		return false;
+	}
+}
+
+bool passingThreadMethod(ThreadArgsB* args) {
+	if (read(args->pipe.s.read, sharedLineBuffer, LINE_BUFF_SIZE) <= 0) {
+		threadBHasNoMoreData = true;
+		return false;
+	}
+
+	return true;
+}
+
+bool writingThreadMethod(ThreadArgsC* args) {
+	static bool hasPassedHeader = false;
+
+	if (!threadBHasNoMoreData) {
+		if (hasPassedHeader) {
+			printf("C: Writing \"%s\"\n", sharedLineBuffer);
+			fputs(sharedLineBuffer, args->file);
+			fputc('\n', args->file);
 		} else {
-			isEof = true;
-		}
+			hasPassedHeader = strncmp("end_header", sharedLineBuffer, 10) == 0;
 
-		printf("A: Signalling\n");
-		sem_post(&readDone);
-	} while (!isEof);
-
-	close(args->pipe.s.write);
-	return;
-}
-
-void passingThreadMethod(ThreadArgsB * args) {
-	printf("B: Begins\n");
-
-	bool isEof = false;
-	do {
-		printf("B: Wait\n");
-		sem_wait(&readDone);
-		printf("B: Signalled\n");
-
-		if (read(args->pipe.s.read, sharedLineBuffer, LINE_BUFF_SIZE) <= 0) {
-			threadBHasNoMoreData = isEof = true;
-		}
-
-		printf("B: Read %d bytes from pipe\n", (int)strlen(sharedLineBuffer));
-
-		printf("B: Signalling\n");
-		sem_post(&passDone);
-	} while (!isEof);
-}
-
-void writingThreadMethod(ThreadArgsC * args) {
-	printf("C: Begins\n");
-	bool isEof = false;
-	bool hasPassedHeader = false;
-
-	do {
-		printf("C: Wait\n");
-		sem_wait(&passDone);
-		printf("C: Signalled\n");
-
-		if (!threadBHasNoMoreData) {
 			if (hasPassedHeader) {
-				printf("C: Writing \"%s\"\n", sharedLineBuffer);
-				fputs(sharedLineBuffer, args->file);
-				fputc('\n', args->file);
-			} else {
-				hasPassedHeader = strncmp("end_header", sharedLineBuffer, 10) == 0;
-
-				if (hasPassedHeader) {
-					printf("C: Header found\n");
-				} else{
-					printf("C: Ignoring \"%s\"\n", sharedLineBuffer);
-				}
+				printf("C: Header found\n");
+			} else{
+				printf("C: Ignoring \"%s\"\n", sharedLineBuffer);
 			}
 		}
 
-		printf("C: Signalling\n");
-		sem_post(&writeDone);
-	} while (!threadBHasNoMoreData);
+		return true;
+	}
 
-	printf("C: EOF found\n");
 	sem_post(&finished);
+	return false;
+}
+
+bool initialiseSemaphores() {
+	/* Init all our semaphores to zero, they should all block and we can begin by
+	* signalling A through writeDone
+	*/
+	return sem_init(&readDone, true, 0) != -1 ||
+					sem_init(&passDone, true, 0) != -1 ||
+					sem_init(&writeDone, true, 0) != -1 ||
+					sem_init(&finished, true, 0)  != -1;
+}
+
+bool destroySemaphores() {
+	/* Use a single pipe char, we would like to attempt to destroy subsequent
+	* semaphores, regardless of whether the previous ones succeeded
+	*/
+	return
+			sem_destroy(&readDone) != -1 |
+			sem_destroy(&passDone) != -1 |
+			sem_destroy(&writeDone) != -1 |
+			sem_destroy(&finished) != -1;
 }
 
 int main(void) {
-	PipeDescriptor fd;
+	int result = -1;
 
+	PipeDescriptor fd;
 	int pipeErr;
 	if ((pipeErr = pipe(fd.fd)) < 0) {
 		perror("Error opening pipe: %d");
 		return -1;
 	}
 
-	/* Init all our semaphores to zero, they should all block and we can begin by
-	* signalling A through writeDone
-	*/
-	bool semaphoresWereInitialised =
-			sem_init(&readDone, true, 0) != -1 ||
-			sem_init(&passDone, true, 0) != -1 ||
-			sem_init(&writeDone, true, 0) != -1 ||
-			sem_init(&finished, true, 0)  != -1;
-
-	if (!semaphoresWereInitialised) {
+	if (!initialiseSemaphores()) {
 		perror("Error creating a semaphore");
-		return -2;
+		goto cleanSemaphores;
 	}
 
-	FILE *input = fopen("data.txt", "r");
+	FILE* input = fopen("data.txt", "r");
 	if (input == NULL) {
 		perror("Error opening input file");
-		return -3;
+		goto cleanSemaphores;
 	}
 
-	FILE *output = fopen("src.txt", "w");
+	FILE* output = fopen("src.txt", "w");
 	if (output == NULL) {
 		perror("Error opening output file");
-		fclose(input);
-		return -4;
+		goto cleanInputFile;
 	}
 
-	pthread_t threadA, threadB, threadC;
+	thread_descriptor threadA, threadB, threadC;
 
-	ThreadArgsA argsA = { input, fd };
-	bool threadsCreated = pthread_create(&threadA, NULL, (void *)readingThreadMethod, (void *)(&argsA)) == 0;
+	ThreadArgsA argsA = { 'F', input, fd };
+	bool threadsCreated = createThread(&threadA, 'A', &writeDone, &readDone, readingThreadMethod, &argsA);
 
 	ThreadArgsB argsB = { fd };
-	threadsCreated &= pthread_create(&threadB, NULL, (void *)passingThreadMethod, (void *)(&argsB)) == 0;
+	threadsCreated &= createThread(&threadB, 'B', &readDone, &passDone, passingThreadMethod, &argsB);
 
 	ThreadArgsC argsC = { output };
-	threadsCreated &= pthread_create(&threadC, NULL, (void *)writingThreadMethod, (void *)(&argsC)) == 0;
+	threadsCreated &= createThread(&threadC, 'C', &passDone, &writeDone, writingThreadMethod, &argsC);
 
 	if (!threadsCreated) {
 		perror("There was a problem when constructing the threads");
-		fclose(input);
-		fclose(output);
-
-		return -5;
+		goto cleanInputFile;
 	}
 
 	printf("main: Signalling\n");
+
+	result = 0;
+
 	sem_post(&writeDone);
 	sem_wait(&finished);
 
-	fclose(input);
-	fclose(output);
+	cleanInputFile:
+	if (fclose(input) != 0) {
+		printf("main: (Warning) There was an error closing the input file\n");
+	}
 
-	/* Use a single pipe char, we would like to attempt to destroy subsequent
-	* semaphores, regardless of whether the previous ones succeeded
-	*/
-	bool semaphoresWereDestroyed =
-			sem_destroy(&readDone) != -1 |
-			sem_destroy(&passDone) != -1 |
-			sem_destroy(&writeDone) != -1 |
-			sem_destroy(&finished) != -1;
+	cleanOutputFile:
+	if (fclose(output) != 0) {
+		printf("main: (Warning) There was an error closing the output file\n");
+	}
 
-	if (!semaphoresWereDestroyed) {
-		printf("main: Some or all semaphores were not destroyed (warning)\n");
+	cleanSemaphores:
+	if (!destroySemaphores()) {
+		printf("main: (Warning) Some or all semaphores were not destroyed\n");
 	}
 
 	printf("main: Done!\n");
 
-	return 0;
+	return result;
 }
