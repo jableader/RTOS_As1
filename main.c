@@ -16,7 +16,7 @@
 /* For a more complicated task I would include the relevant data in the
  * thread args structs, but for this trivial case a global will suffice
  */
-sem_t readDone, passDone, writeDone, finished;
+sem_t readDone, passDone, writeDone;
 char sharedLineBuffer[LINE_BUFF_SIZE];
 volatile bool threadBHasNoMoreData = false;
 
@@ -66,7 +66,6 @@ bool createThread(thread_descriptor * thread, char id, sem_t* start, sem_t* end,
 }
 
 typedef struct {
-	char c;
 	FILE * file;
 	PipeDescriptor pipe;
 } ThreadArgsA;
@@ -116,26 +115,21 @@ bool passingThreadMethod(ThreadArgsB* args) {
 bool writingThreadMethod(ThreadArgsC* args) {
 	static bool hasPassedHeader = false;
 
-	if (!threadBHasNoMoreData) {
-		if (hasPassedHeader) {
-			printf("C: Writing \"%s\"\n", sharedLineBuffer);
-			fputs(sharedLineBuffer, args->file);
-			fputc('\n', args->file);
-		} else {
-			hasPassedHeader = strncmp("end_header", sharedLineBuffer, 10) == 0;
-
-			if (hasPassedHeader) {
-				printf("C: Header found\n");
-			} else{
-				printf("C: Ignoring \"%s\"\n", sharedLineBuffer);
-			}
-		}
-
-		return true;
+	if (threadBHasNoMoreData) {
+		return false;
 	}
 
-	sem_post(&finished);
-	return false;
+	printf("C: Recieved \"%s\" from B\n", sharedLineBuffer);
+
+	if (hasPassedHeader) {
+		fputs(sharedLineBuffer, args->file);
+		fputc('\n', args->file);
+	} else if (strncmp("end_header", sharedLineBuffer, 10) == 0) {
+		printf("C: Header found\n");
+		hasPassedHeader = true;
+	}
+
+	return true;
 }
 
 bool initialiseSemaphores() {
@@ -186,14 +180,14 @@ int main(void) {
 
 	thread_descriptor threadA, threadB, threadC;
 
-	ThreadArgsA argsA = { 'F', input, fd };
-	bool threadsCreated = createThread(&threadA, 'A', &writeDone, &readDone, readingThreadMethod, &argsA);
+	ThreadArgsA argsA = { input, fd };
+	bool threadsCreated = createThread(&threadA, 'A', &writeDone, &readDone, (bool(*)(void*))readingThreadMethod, &argsA);
 
 	ThreadArgsB argsB = { fd };
-	threadsCreated &= createThread(&threadB, 'B', &readDone, &passDone, passingThreadMethod, &argsB);
+	threadsCreated &= createThread(&threadB, 'B', &readDone, &passDone, (bool(*)(void*))passingThreadMethod, &argsB);
 
 	ThreadArgsC argsC = { output };
-	threadsCreated &= createThread(&threadC, 'C', &passDone, &writeDone, writingThreadMethod, &argsC);
+	threadsCreated &= createThread(&threadC, 'C', &passDone, &writeDone, (bool(*)(void*))writingThreadMethod, &argsC);
 
 	if (!threadsCreated) {
 		perror("There was a problem when constructing the threads");
