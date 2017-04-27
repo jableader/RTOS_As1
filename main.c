@@ -49,7 +49,7 @@ void threadRunner(thread_descriptor * td) {
 		shouldContinue = td->threadMethod(td->otherArgs);
 
 		printf("%c: Signalling next thread.\n", td->id);
-		sem_wait(td->start);
+		sem_post(td->end);
 	} while (shouldContinue);
 
 	printf("%c: Exit condition reached, ending now.\n", td->id);
@@ -144,8 +144,7 @@ bool initialiseSemaphores() {
 	*/
 	return sem_init(&readDone, true, 0) != -1 ||
 					sem_init(&passDone, true, 0) != -1 ||
-					sem_init(&writeDone, true, 0) != -1 ||
-					sem_init(&finished, true, 0)  != -1;
+					sem_init(&writeDone, true, 0) != -1;
 }
 
 bool destroySemaphores() {
@@ -155,8 +154,7 @@ bool destroySemaphores() {
 	return
 			sem_destroy(&readDone) != -1 |
 			sem_destroy(&passDone) != -1 |
-			sem_destroy(&writeDone) != -1 |
-			sem_destroy(&finished) != -1;
+			sem_destroy(&writeDone) != -1;
 }
 
 int main(void) {
@@ -166,7 +164,7 @@ int main(void) {
 	int pipeErr;
 	if ((pipeErr = pipe(fd.fd)) < 0) {
 		perror("Error opening pipe: %d");
-		return -1;
+		goto done;
 	}
 
 	if (!initialiseSemaphores()) {
@@ -207,7 +205,7 @@ int main(void) {
 	result = 0;
 
 	sem_post(&writeDone);
-	sem_wait(&finished);
+	pthread_join(threadC.thread, NULL);
 
 	cleanInputFile:
 	if (fclose(input) != 0) {
@@ -224,7 +222,7 @@ int main(void) {
 		printf("main: (Warning) Some or all semaphores were not destroyed\n");
 	}
 
+	done:
 	printf("main: Done!\n");
-
 	return result;
 }
