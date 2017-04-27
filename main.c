@@ -29,6 +29,19 @@ typedef union {
 } PipeDescriptor;
 
 typedef struct {
+	FILE * file;
+	PipeDescriptor pipe;
+} ThreadArgsA;
+
+typedef struct {
+	PipeDescriptor pipe;
+} ThreadArgsB;
+
+typedef struct {
+	FILE * file;
+} ThreadArgsC;
+
+typedef struct {
 	pthread_t thread;
 	char id;
 	sem_t* start;
@@ -65,19 +78,6 @@ bool createThread(thread_descriptor * thread, char id, sem_t* start, sem_t* end,
 	return pthread_create(&(thread->thread), NULL, (void *)threadRunner, (void *)thread) == 0;
 }
 
-typedef struct {
-	FILE * file;
-	PipeDescriptor pipe;
-} ThreadArgsA;
-
-typedef struct {
-	PipeDescriptor pipe;
-} ThreadArgsB;
-
-typedef struct {
-	FILE * file;
-} ThreadArgsC;
-
 void trimAfterNewline(char* s) {
 	while (*s != '\n' && *s != '\r' && *s != '\0')
 		s++;
@@ -106,6 +106,8 @@ bool readingThreadMethod(ThreadArgsA* args) {
 bool passingThreadMethod(ThreadArgsB* args) {
 	if (read(args->pipe.s.read, sharedLineBuffer, LINE_BUFF_SIZE) <= 0) {
 		threadBHasNoMoreData = true;
+		close(args->pipe.s.write);
+
 		return false;
 	}
 
@@ -119,12 +121,11 @@ bool writingThreadMethod(ThreadArgsC* args) {
 		return false;
 	}
 
-	printf("C: Recieved \"%s\" from B\n", sharedLineBuffer);
+	printf("C: %s \"%s\"\n", hasPassedHeader ? "Writing" : "Skipping", sharedLineBuffer);
 
 	if (hasPassedHeader) {
-		fputs(sharedLineBuffer, args->file);
-		fputc('\n', args->file);
-	} else if (strncmp("end_header", sharedLineBuffer, 10) == 0) {
+		fprintf(args->file, "%s\n", sharedLineBuffer);
+	} else if (strcmp("end_header", sharedLineBuffer) == 0) {
 		printf("C: Header found\n");
 		hasPassedHeader = true;
 	}
